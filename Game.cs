@@ -1,69 +1,158 @@
-﻿using OpenTK.Graphics.OpenGL;
+﻿using OpenTK.Graphics.OpenGL4;
 using OpenTK.Mathematics;
+using System;
 
 namespace WindowEngine
 {
-    // Game class handles the logic and rendering for our 3D graphics app
     public class Game
     {
-        // Surface for 2D pixel operations (simplified for this demo)
-        private Surface screen;
-        // Angle for spinning animation
-        private float angle = 0f;
+        private readonly Surface screen;
+        private int vao, vbo, shaderProgram;
 
-        // Constructor: Initialize with screen dimensions
         public Game(int width, int height)
         {
             screen = new Surface(width, height);
         }
 
-        // Initialize OpenGL state and resources
         public void Init()
         {
-            // Set clear color to dark blue for a clean background
-            GL.ClearColor(0.0f, 0.0f, 0.2f, 1.0f);
-            // Enable depth testing for 3D rendering
-            GL.Enable(EnableCap.DepthTest);
-            // Set up a basic orthographic projection (2D-like for simplicity)
-            GL.MatrixMode(MatrixMode.Projection);
-            GL.LoadIdentity();
-            GL.Ortho(-2.0, 2.0, -2.0, 2.0, -10.0, 10.0); // World coords: -2 to 2
+            // Set clear color to white as per your previous modification
+            GL.ClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+            // Disable depth testing and culling for 2D rendering
+            GL.Disable(EnableCap.DepthTest);
+            GL.Disable(EnableCap.CullFace);
+
+            // Vertex data for a 300x300 pixel square centered in the window
+            float centerX = screen.width / 2.0f;
+            float centerY = screen.height / 2.0f;
+            float halfSize = 150.0f; // Half of 300 pixels
+            float[] vertices = {
+                // Positions (in pixels)               // Colors (R, G, B)
+                centerX - halfSize, centerY + halfSize, 0.0f,  0.0f, 0.0f, 0.0f,  // Bottom-left: black
+                centerX + halfSize, centerY + halfSize, 0.0f,  0.0f, 0.0f, 1.0f,  // Bottom-right: light blue (255/255)
+                centerX + halfSize, centerY - halfSize, 0.0f,  0.0f, 0.0f, 1.0f,  // Top-right: light blue (255/255)
+                centerX - halfSize, centerY - halfSize, 0.0f,  0.0f, 0.0f, 0.0f   // Top-left: black
+            };
+
+            // Create and bind VAO and VBO
+            vao = GL.GenVertexArray();
+            vbo = GL.GenBuffer();
+            GL.BindVertexArray(vao);
+            GL.BindBuffer(BufferTarget.ArrayBuffer, vbo);
+            GL.BufferData(BufferTarget.ArrayBuffer, vertices.Length * sizeof(float), vertices, BufferUsageHint.StaticDraw);
+
+            // Vertex attributes: position (3 floats) + color (3 floats)
+            GL.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), 0);
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), 3 * sizeof(float));
+            GL.EnableVertexAttribArray(1);
+
+            // Vertex shader
+            string vertexShaderSource = @"
+                #version 330 core
+                layout(location = 0) in vec3 aPosition;
+                layout(location = 1) in vec3 aColor;
+                out vec3 vColor;
+                uniform vec2 uResolution;
+                void main()
+                {
+                    vec2 normalized = (aPosition.xy / uResolution) * 2.0 - 1.0;
+                    gl_Position = vec4(normalized.x, -normalized.y, 0.0, 1.0); // Flip y for correct orientation
+                    vColor = aColor;
+                }";
+
+            // Fragment shader
+            string fragmentShaderSource = @"
+                #version 330 core
+                in vec3 vColor;
+                out vec4 FragColor;
+                void main()
+                {
+                    FragColor = vec4(vColor, 1.0);
+                }";
+
+            // Compile shaders
+            int vertexShader = GL.CreateShader(ShaderType.VertexShader);
+            GL.ShaderSource(vertexShader, vertexShaderSource);
+            GL.CompileShader(vertexShader);
+            CheckShaderError(vertexShader, "Vertex Shader");
+
+            int fragmentShader = GL.CreateShader(ShaderType.FragmentShader);
+            GL.ShaderSource(fragmentShader, fragmentShaderSource);
+            GL.CompileShader(fragmentShader);
+            CheckShaderError(fragmentShader, "Fragment Shader");
+
+            // Link shader program
+            shaderProgram = GL.CreateProgram();
+            GL.AttachShader(shaderProgram, vertexShader);
+            GL.AttachShader(shaderProgram, fragmentShader);
+            GL.LinkProgram(shaderProgram);
+            CheckProgramError(shaderProgram);
+
+            // Clean up shaders
+            GL.DeleteShader(vertexShader);
+            GL.DeleteShader(fragmentShader);
+
+            // Set resolution uniform
+            GL.UseProgram(shaderProgram);
+            int resolutionLoc = GL.GetUniformLocation(shaderProgram, "uResolution");
+            GL.Uniform2(resolutionLoc, (float)screen.width, (float)screen.height);
+
+            CheckGLError("After Init");
         }
 
-        // Called each frame to update and render
         public void Tick()
         {
-            // Clear the screen and depth buffer
-            GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
-
-            // Update angle for spinning animation (radians per frame)
-            angle += 0.05f;
-
-            // Render in 3D using OpenGL
+            GL.Clear(ClearBufferMask.ColorBufferBit);
             RenderGL();
+            CheckGLError("After Tick");
         }
 
-        // Custom OpenGL rendering
-        public void RenderGL()
+        private void RenderGL()
         {
-            // Set modelview matrix for transformations
-            GL.MatrixMode(MatrixMode.Modelview);
-            GL.LoadIdentity();
-            // Apply rotation around Z-axis for spinning effect
-            GL.Rotate(angle * 180 / MathHelper.Pi, 0, 0, 1);
+            GL.UseProgram(shaderProgram);
+            GL.BindVertexArray(vao);
+            GL.DrawArrays(PrimitiveType.TriangleFan, 0, 4); // Draw square as triangle fan
+            CheckGLError("After RenderGL");
+        }
 
-            // Draw a white square (2x2 in world coords)
-            GL.Color3(1.0f, 1.0f, 1.0f); // White color
-            GL.Begin(PrimitiveType.Quads);
-            GL.Vertex2(-1.0f, -1.0f); // Bottom-left
-            GL.Vertex2(1.0f, -1.0f);  // Bottom-right
-            GL.Vertex2(1.0f, 1.0f);   // Top-right
-            GL.Vertex2(-1.0f, 1.0f);  // Top-left
-            GL.End();
+        public void Cleanup()
+        {
+            GL.DeleteBuffer(vbo);
+            GL.DeleteVertexArray(vao);
+            GL.DeleteProgram(shaderProgram);
+        }
+
+        private void CheckGLError(string context)
+        {
+            ErrorCode error = GL.GetError();
+            if (error != ErrorCode.NoError)
+            {
+                Console.WriteLine($"OpenGL Error at {context}: {error}");
+            }
+        }
+
+        private void CheckShaderError(int shader, string name)
+        {
+            GL.GetShader(shader, ShaderParameter.CompileStatus, out int success);
+            if (success == 0)
+            {
+                string infoLog = GL.GetShaderInfoLog(shader);
+                Console.WriteLine($"{name} Compilation Error: {infoLog}");
+            }
+        }
+
+        private void CheckProgramError(int program)
+        {
+            GL.GetProgram(program, GetProgramParameterName.LinkStatus, out int success);
+            if (success == 0)
+            {
+                string infoLog = GL.GetProgramInfoLog(program);
+                Console.WriteLine($"Program Link Error: {infoLog}");
+            }
         }
     }
 
-    // Simple Surface class to mimic pixel array (placeholder for 2D operations)
     public class Surface
     {
         public int[] pixels;

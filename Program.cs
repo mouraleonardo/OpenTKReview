@@ -2,61 +2,47 @@
 using OpenTK.Mathematics;
 using OpenTK.Windowing.Common;
 using OpenTK.Windowing.Desktop;
-using OpenTK.Windowing.GraphicsLibraryFramework;
+using System;
 
 namespace WindowEngine
 {
-    // Main entry point and OpenGL window setup
     class Program
     {
         static void Main(string[] args)
         {
-            // Define window settings
-            var nativeWindowSettings = new NativeWindowSettings()
+            // Configure window settings
+            var windowSettings = GameWindowSettings.Default;
+            var nativeSettings = new NativeWindowSettings
             {
-                Size = new Vector2i(800, 600), // Modern resolution
-                Title = "OpenTK Graphics Tutorial",
-                WindowBorder = WindowBorder.Fixed,
-                Profile = ContextProfile.Core, // Use modern OpenGL
-                APIVersion = new Version(3, 3) // OpenGL 3.3 for compatibility
+                Size = new Vector2i(800, 600), // 800x600 window
+                Title = "Square Demo",
+                Profile = ContextProfile.Core, // OpenGL 3.3 Core Profile
+                APIVersion = new Version(3, 3)
             };
 
-            // Create window and game instance
-            using (var window = new GameWindow(GameWindowSettings.Default, nativeWindowSettings))
+            // Create window and game
+            using var window = new GameWindow(windowSettings, nativeSettings);
+            var game = new Game(800, 600);
+
+            // Initialize OpenGL
+            window.Load += () =>
             {
-                var game = new Game(800, 600);
+                game.Init();
+                Console.WriteLine($"OpenGL Version: {GL.GetString(StringName.Version)}");
+            };
 
-                // Initialize OpenGL on load
-                window.Load += () =>
-                {
-                    game.Init();
-                };
+            // Render loop
+            window.RenderFrame += (args) =>
+            {
+                game.Tick();
+                window.SwapBuffers(); // Ensure content is displayed
+            };
 
-                // Update and render each frame
-                window.RenderFrame += (FrameEventArgs e) =>
-                {
-                    game.Tick();
-                    window.SwapBuffers(); // Double buffering for smooth rendering
-                };
+            // Cleanup
+            window.Unload += () => game.Cleanup();
 
-                // Handle window resizing (basic setup)
-                window.Resize += (ResizeEventArgs e) =>
-                {
-                    GL.Viewport(0, 0, e.Width, e.Height);
-                };
-
-                // Close on ESC key
-                window.UpdateFrame += (FrameEventArgs e) =>
-                {
-                    if (window.KeyboardState.IsKeyDown(Keys.Escape))
-                    {
-                        window.Close();
-                    }
-                };
-
-                // Run at 60 FPS
-                window.Run();
-            }
+            // Run the window
+            window.Run();
         }
     }
 }
